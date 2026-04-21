@@ -104,8 +104,8 @@ class Tools:
 
     # -- direct-import backend -------------------------------------------------
 
-    def _di_get_memories(self, user_id: str) -> list:
-        rows = _Memories.get_memories_by_user_id(user_id)
+    async def _di_get_memories(self, user_id: str) -> list:
+        rows = await _Memories.get_memories_by_user_id(user_id)
         return [
             {
                 "id": getattr(m, "id", ""),
@@ -116,8 +116,8 @@ class Tools:
             for m in (rows or [])
         ]
 
-    def _di_keyword_search(self, user_id: str, content: str, k: int) -> list:
-        all_mems = self._di_get_memories(user_id)
+    async def _di_keyword_search(self, user_id: str, content: str, k: int) -> list:
+        all_mems = await self._di_get_memories(user_id)
         q_tok = self._tokenize(content)
         scored = sorted(
             all_mems,
@@ -127,15 +127,15 @@ class Tools:
         )
         return scored[:k]
 
-    def _di_query_memories(self, user_id: str, content: str, k: int) -> list:
+    async def _di_query_memories(self, user_id: str, content: str, k: int) -> list:
         try:
             req = self._current_request
             if req is None:
-                return self._di_keyword_search(user_id, content, k)
+                return await self._di_keyword_search(user_id, content, k)
             embedding_fn = req.app.state.EMBEDDING_FUNCTION
             loop = asyncio.new_event_loop()
             try:
-                vector = loop.run_until_complete(embedding_fn(content))
+                vector = await loop.run_in_executor(None, embedding_fn, content)
             finally:
                 loop.close()
             results = _VDB.search(
@@ -146,7 +146,7 @@ class Tools:
                 ids = (
                     results.ids[0] if isinstance(results.ids[0], list) else results.ids
                 )
-            mems = [_Memories.get_memory_by_id(mid) for mid in ids]
+            mems = [await _Memories.get_memory_by_id(mid) for mid in ids]
             return [
                 {
                     "id": m.id,
@@ -161,18 +161,18 @@ class Tools:
             log.warning(
                 f"Memory Write Tool: vector search failed ({e}), using keyword fallback"
             )
-            return self._di_keyword_search(user_id, content, k)
+            return await self._di_keyword_search(user_id, content, k)
 
-    def _di_save_memory(self, user_id: str, content: str):
-        m = _Memories.insert_new_memory(user_id, content)
+    async def _di_save_memory(self, user_id: str, content: str):
+        m = await _Memories.insert_new_memory(user_id, content)
         if m:
             try:
                 req = self._current_request
                 if req:
                     loop = asyncio.new_event_loop()
                     try:
-                        vector = loop.run_until_complete(
-                            req.app.state.EMBEDDING_FUNCTION(content)
+                        vector = await loop.run_in_executor(
+                            None, req.app.state.EMBEDDING_FUNCTION, content
                         )
                     finally:
                         loop.close()
@@ -193,16 +193,16 @@ class Tools:
                 log.warning(f"Memory Write Tool: vector upsert failed ({e})")
         return m
 
-    def _di_update_memory(self, user_id: str, memory_id: str, new_content: str) -> bool:
-        m = _Memories.update_memory_by_id_and_user_id(memory_id, user_id, new_content)
+    async def _di_update_memory(self, user_id: str, memory_id: str, new_content: str) -> bool:
+        m = await _Memories.update_memory_by_id_and_user_id(memory_id, user_id, new_content)
         if m:
             try:
                 req = self._current_request
                 if req:
                     loop = asyncio.new_event_loop()
                     try:
-                        vector = loop.run_until_complete(
-                            req.app.state.EMBEDDING_FUNCTION(new_content)
+                        vector = await loop.run_in_executor(
+                            None, req.app.state.EMBEDDING_FUNCTION, new_content
                         )
                     finally:
                         loop.close()
@@ -224,8 +224,8 @@ class Tools:
             return True
         return False
 
-    def _di_delete_memory(self, user_id: str, memory_id: str) -> tuple:
-        result = _Memories.delete_memory_by_id_and_user_id(memory_id, user_id)
+    async def _di_delete_memory(self, user_id: str, memory_id: str) -> tuple:
+        result = await _Memories.delete_memory_by_id_and_user_id(memory_id, user_id)
         if result is None:
             return (False, "not found or does not belong to this user")
         if result is False:

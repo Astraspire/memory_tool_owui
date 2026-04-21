@@ -364,15 +364,15 @@ class Tools:
 
     # -- direct-import backend -------------------------------------------------
 
-    def _di_get_memories(self, user_id: str) -> list:
-        rows = _Memories.get_memories_by_user_id(user_id)
+    async def _di_get_memories(self, user_id: str) -> list:
+        rows = await _Memories.get_memories_by_user_id(user_id)
         return [
             {"id": getattr(m, "id", ""), "content": getattr(m, "content", "")}
             for m in (rows or [])
         ]
 
-    def _di_keyword_search(self, user_id: str, content: str, k: int) -> list:
-        all_mems = self._di_get_memories(user_id)
+    async def _di_keyword_search(self, user_id: str, content: str, k: int) -> list:
+        all_mems = await self._di_get_memories(user_id)
         q_tok = self._tokenize(content)
         scored = sorted(
             all_mems,
@@ -382,15 +382,15 @@ class Tools:
         )
         return scored[:k]
 
-    def _di_query_memories(self, user_id: str, content: str, k: int) -> list:
+    async def _di_query_memories(self, user_id: str, content: str, k: int) -> list:
         try:
             req = self._current_request
             if req is None:
-                return self._di_keyword_search(user_id, content, k)
+                return await self._di_keyword_search(user_id, content, k)
             embedding_fn = req.app.state.EMBEDDING_FUNCTION
             loop = asyncio.new_event_loop()
             try:
-                vector = loop.run_until_complete(embedding_fn(content))
+                vector = await loop.run_in_executor(None, embedding_fn, content)
             finally:
                 loop.close()
             results = _VDB.search(
@@ -401,13 +401,13 @@ class Tools:
                 ids = (
                     results.ids[0] if isinstance(results.ids[0], list) else results.ids
                 )
-            mems = [_Memories.get_memory_by_id(mid) for mid in ids]
+            mems = [await _Memories.get_memory_by_id(mid) for mid in ids]
             return [{"id": m.id, "content": m.content} for m in mems if m]
         except Exception as e:
             log.warning(
                 f"Memory Recall Tool: vector search failed ({e}), using keyword fallback"
             )
-            return self._di_keyword_search(user_id, content, k)
+            return await self._di_keyword_search(user_id, content, k)
 
     # -- HTTP fallback backend -------------------------------------------------
 

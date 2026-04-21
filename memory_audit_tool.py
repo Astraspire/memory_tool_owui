@@ -135,8 +135,8 @@ class Tools:
 
     # -- backend --------------------------------------------------------------
 
-    def _di_get_memories(self, user_id: str) -> list:
-        rows = _Memories.get_memories_by_user_id(user_id)
+    async def _di_get_memories(self, user_id: str) -> list:
+        rows = await _Memories.get_memories_by_user_id(user_id)
         return [
             {
                 "id": getattr(m, "id", ""),
