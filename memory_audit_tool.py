@@ -1,8 +1,8 @@
 """
 title: Memory Audit Tool
 author: Danny
-version: 3.2.0
-description: Read-only memory inventory and structural quality analysis tool.
+version: 3.2.1
+description: Read-only memory inventory and structural quality analysis tool. Updated for Open Web UI v0.9.
 """
 
 import re
@@ -164,7 +164,7 @@ class Tools:
 
     async def _get_memories(self, uid: str) -> list:
         if _DIRECT_IMPORT_OK:
-            return await asyncio.to_thread(self._di_get_memories, uid)
+            return await self._di_get_memories(uid)
         return await asyncio.to_thread(self._http_get_memories)
 
     # -- tokenization & scoring ------------------------------------------------

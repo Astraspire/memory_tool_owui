@@ -1,8 +1,8 @@
 """
 title: Memory Recall Tool
 author: Danny
-version: 3.2.0
-description: Read-only memory recall tool for response-time personalization.
+version: 3.2.1
+description: Read-only memory recall tool for response-time personalization. Updated for Open Web UI v0.9.
 """
 
 import re
@@ -456,12 +456,12 @@ class Tools:
 
     async def _get_memories(self, uid: str) -> list:
         if _DIRECT_IMPORT_OK:
-            return await asyncio.to_thread(self._di_get_memories, uid)
+            return await self._di_get_memories(uid)
         return await asyncio.to_thread(self._http_get_memories)
 
     async def _query_memories(self, uid: str, content: str, k: int) -> list:
         if _DIRECT_IMPORT_OK:
-            return await asyncio.to_thread(self._di_query_memories, uid, content, k)
+            return await self._di_query_memories(uid, content, k)
         return await asyncio.to_thread(self._http_query_memories, content, k)
 
     # -- public tools ----------------------------------------------------------

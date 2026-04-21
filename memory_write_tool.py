@@ -1,8 +1,8 @@
 """
 title: Memory Write Tool
 author: Danny
-version: 3.2.0
-description: Mutation-only memory tool. Saves, updates, deletes, and prunes stored memories.
+version: 3.2.1
+description: Mutation-only memory tool. Saves, updates, deletes, and prunes stored memories. Updated for Open Web UI v0.9.
 """
 
 import re
@@ -309,27 +309,27 @@ class Tools:
 
     async def _get_memories(self, uid: str) -> list:
         if _DIRECT_IMPORT_OK:
-            return await asyncio.to_thread(self._di_get_memories, uid)
+            return await self._di_get_memories(uid)
         return await asyncio.to_thread(self._http_get_memories)
 
     async def _query_memories(self, uid: str, content: str, k: int) -> list:
         if _DIRECT_IMPORT_OK:
-            return await asyncio.to_thread(self._di_query_memories, uid, content, k)
+            return await self._di_query_memories(uid, content, k)
         return await asyncio.to_thread(self._http_query_memories, content, k)
 
     async def _save_memory(self, uid: str, content: str):
         if _DIRECT_IMPORT_OK:
-            return await asyncio.to_thread(self._di_save_memory, uid, content)
+            return await self._di_save_memory(uid, content)
         return await asyncio.to_thread(self._http_save_memory, content)
 
     async def _update_memory(self, uid: str, mid: str, content: str):
         if _DIRECT_IMPORT_OK:
-            return await asyncio.to_thread(self._di_update_memory, uid, mid, content)
+            return await self._di_update_memory(uid, mid, content)
         return await asyncio.to_thread(self._http_update_memory, mid, content)
 
     async def _delete_memory(self, uid: str, mid: str) -> tuple:
         if _DIRECT_IMPORT_OK:
-            return await asyncio.to_thread(self._di_delete_memory, uid, mid)
+            return await self._di_delete_memory(uid, mid)
         return await asyncio.to_thread(self._http_delete_memory, mid)
 
     # -- public tools ----------------------------------------------------------
