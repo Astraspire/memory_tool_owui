@@ -1,8 +1,8 @@
 """
 title: Memory Write Tool
 author: Danny
-version: 3.2.1
-description: Mutation-only memory tool. Saves, updates, deletes, and prunes stored memories. Updated for Open Web UI v0.9.
+version: 3.2.2
+description: Mutation-only memory tool. Saves, updates, deletes, and prunes stored memories. Updated for Open Web UI v0.10.2 and new memory techniques.
 """
 
 import re
@@ -193,8 +193,12 @@ class Tools:
                 log.warning(f"Memory Write Tool: vector upsert failed ({e})")
         return m
 
-    async def _di_update_memory(self, user_id: str, memory_id: str, new_content: str) -> bool:
-        m = await _Memories.update_memory_by_id_and_user_id(memory_id, user_id, new_content)
+    async def _di_update_memory(
+        self, user_id: str, memory_id: str, new_content: str
+    ) -> bool:
+        m = await _Memories.update_memory_by_id_and_user_id(
+            memory_id, user_id, new_content
+        )
         if m:
             try:
                 req = self._current_request
@@ -568,119 +572,4 @@ class Tools:
             lines.append("\u2705 Deleted IDs: " + ", ".join(deleted))
         if failed:
             lines.append("\u274c Failed: " + ", ".join(failed))
-        return "\n".join(lines)
-
-    async def semantic_prune_memories(
-        self,
-        topic: str,
-        keep_top_k: int = 1,
-        dry_run: bool = False,
-        __user__: dict = None,
-        __request__=None,
-        __event_emitter__=None,
-    ) -> str:
-        """
-        Retrieve memories about a topic, rank by relevance, keep the top-k, delete the rest.
-        ALWAYS run with dry_run=True first to preview results.
-
-        CORRECT workflow:
-          semantic_prune_memories(topic="docker", keep_top_k=1, dry_run=True)
-          semantic_prune_memories(topic="docker", keep_top_k=1, dry_run=False)
-
-        :param topic: Short phrase describing the subject to prune.
-        :param keep_top_k: How many top-scoring entries to keep (default 1).
-        :param dry_run: Preview without deleting (default False).
-        """
-        self._current_request = __request__
-        __user__ = __user__ or {}
-        uid = self._user_id(__user__)
-        recall_k = self._resolve_val(__user__, "recall_k", 8)
-
-        if keep_top_k < 1:
-            return "\u26a0\ufe0f keep_top_k must be \u2265 1."
-
-        if __event_emitter__:
-            await __event_emitter__(
-                {
-                    "type": "status",
-                    "data": {
-                        "description": f"Querying memories about '{topic}'\u2026",
-                        "done": False,
-                    },
-                }
-            )
-
-        results = await self._query_memories(uid, topic, recall_k)
-        if not results:
-            return f"No memories found for '{topic}'."
-
-        topic_tok = self._tokenize(topic)
-        scored = sorted(
-            [
-                {
-                    "id": m.get("id", "?"),
-                    "content": m.get("content", ""),
-                    "score": self._jaccard_score(
-                        topic_tok, self._tokenize(m.get("content", ""))
-                    ),
-                }
-                for m in results
-            ],
-            key=lambda x: -x["score"],
-        )
-        to_keep = scored[:keep_top_k]
-        to_delete = scored[keep_top_k:]
-
-        if not to_delete:
-            return (
-                f"\u2705 No pruning needed \u2014 only {len(scored)} "
-                f"entries for '{topic}' (\u2264 keep_top_k={keep_top_k})."
-            )
-
-        mode = (
-            "\U0001f4dd DRY RUN (no changes)" if dry_run else "\U0001f5d1\ufe0f PRUNING"
-        )
-        lines = [
-            f"**Semantic Prune: '{topic}'** [{mode}]",
-            f"Found: {len(scored)} | Keeping: {len(to_keep)} | To delete: {len(to_delete)}",
-            "---",
-            "\u2705 KEEPING:",
-        ]
-        for m in to_keep:
-            lines.append(
-                f"  \u2022 [id: {m['id']}] (score: {m['score']:.3f}) \"{m['content']}\""
-            )
-        delete_label = "[PREVIEW] WOULD DELETE" if dry_run else "[DELETE] DELETING"
-        lines.append(f"\n{delete_label}:")
-        for m in to_delete:
-            lines.append(
-                f"  \u2022 [id: {m['id']}] (score: {m['score']:.3f}) \"{m['content']}\""
-            )
-
-        if dry_run:
-            lines.append(
-                "\n\u26a0\ufe0f DRY RUN \u2014 nothing deleted.\n"
-                f'To commit: semantic_prune_memories(topic="{topic}", keep_top_k={keep_top_k}, dry_run=False)'
-            )
-            return "\n".join(lines)
-
-        deleted_ids, failed_ids = [], []
-        for m in to_delete:
-            ok, detail = await self._delete_memory(uid, m["id"])
-            if ok:
-                deleted_ids.append(m["id"])
-            else:
-                failed_ids.append(f"{m['id']} ({detail})")
-
-        lines.append(f"\n\u2705 Deleted: {len(deleted_ids)}/{len(to_delete)}")
-        if failed_ids:
-            lines.append("\u274c Failed: " + ", ".join(failed_ids))
-
-        if __event_emitter__:
-            await __event_emitter__(
-                {
-                    "type": "status",
-                    "data": {"description": "Prune complete.", "done": True},
-                }
-            )
         return "\n".join(lines)

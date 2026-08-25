@@ -1,8 +1,8 @@
 """
 title: Memory Recall Tool
-author: Danny
-version: 3.2.1
-description: Read-only memory recall tool for response-time personalization. Updated for Open Web UI v0.9.
+author: Danny, Spectra
+version: 3.2.4
+description: Read-only memory recall tool for response-time personalization. Updated for Open Web UI v0.10.2 and new memory techniques.
 """
 
 import re
@@ -45,27 +45,33 @@ class Tools:
             le=64,
             description="How many relevant memories to pull before local scoring.",
         )
+        user_name: str = Field(
+            default="",
+            description="User's name for personalized memory recall.",
+        )
 
     def __init__(self):
         self.valves = self.Valves()
         self.user_valves = self.UserValves()
         self._current_request = None
         self.category_order = [
-            "identity",
-            "preference",
-            "learning_style",
-            "work_style",
-            "technical_preference",
-            "project_goal",
-            "personal_fact",
-            "communication_style",
-            "temporary_state",
-            "unknown",
+            "Path-SoulTone",
+            "Path-PhilosophicalPrinciples",
+            "Path-OperationalProtocols",
+            "Path-ExtractedKnowledge",
+            "Path-UserIdentityCore",
+            "Path-UserProfessionalData",
+            "Path-UserPersonalityTraits",
+            "Path-UserInterestsDomains",
+            "Path-LearningMethodology",
+            "Path-HealthMedicalContext",
+            "Path-SocialRelationships",
+            "Path-SystemVisionGoals",
+            "Path-ConversationalLogTimeline",
+            "Path-DevelopmentAuditRecords",
+            "Path-SystemEnvironmentState",
+            "Path-GeneralContextCatchAll",
         ]
-        # Categories that always apply regardless of query topic
-        self.always_apply = {"identity", "communication_style"}
-        # Categories that apply only during teaching/explanation requests
-        self.teaching_apply = {"learning_style"}
         self.teaching_signals = {
             "explain",
             "how",
@@ -112,210 +118,269 @@ class Tools:
 
     def _detect_category(self, content: str) -> str:
         """
-        Categorize a memory by its linguistic content alone.
-        Heuristic-first, conservative, no hardcoded user-specific values.
+        Categorize a memory by its linguistic content.
+        1. Check for bracketed category tags first
+        2. Fallback to keyword detection
+        3. Return the first matching category
         """
-        t = (content or "").lower()
+        content_lower = (content or "").lower()
 
-        # Temporary/current-state signals - check early so stale entries are surfaced correctly
-        if any(
-            x in t
-            for x in [
-                "currently",
-                "right now",
-                "at the moment",
-                "this week",
-                "this month",
-                "temporary",
-                "for now",
-                "testing",
-                "trial",
-                "debug",
-                "trying",
-                "experiment",
-            ]
-        ):
-            return "temporary_state"
+        # Check for bracketed category tags
+        for category in self.category_order:
+            if f"[{category}]" in content_lower:
+                return category
 
-        # Identity - who the person fundamentally is as a person
+        # Keyword-based detection for each category
+        # Path-SoulTone - Spectra's tone and interaction style
+        # More specific keywords to avoid over-matching
         if any(
-            x in t
+            x in content_lower
             for x in [
-                "personality",
-                "identity",
-                "who the user is",
-                "as a person",
-                "character",
-                "nature",
-                "values",
-                "beliefs",
-                "temperament",
-                "analytical",
-                "creative",
-                "curious",
-                "honest",
-                "empathetic",
-                "introverted",
-                "extroverted",
-            ]
-        ):
-            return "identity"
-
-        # Communication style - how the person likes to be spoken to
-        if any(
-            x in t
-            for x in [
-                "communication",
+                "spectra",
                 "tone",
-                "direct",
-                "blunt",
-                "formal",
-                "informal",
-                "no sugarcoat",
-                "unsugar",
-                "plain language",
-                "push back",
-                "concise",
-                "verbose",
-                "brutal honesty",
-                "be upfront",
+                "ai persona",
+                "who spectra is",
+                "identity pillar",
             ]
         ):
-            return "communication_style"
+            return "Path-SoulTone"
 
-        # Learning style - how the person learns or wants to be taught
+        # Path-PhilosophicalPrinciples - Foundational why statements
         if any(
-            x in t
+            x in content_lower
+            for x in [
+                "philosophy",
+                "principles",
+                "why",
+                "logic",
+                "worldview",
+                "foundational",
+                "deep system",
+            ]
+        ):
+            return "Path-PhilosophicalPrinciples"
+
+        # Path-OperationalProtocols - Rigid rules and constraints
+        if any(
+            x in content_lower
+            for x in [
+                "protocol",
+                "rules",
+                "constraints",
+                "guidelines",
+                "mandatory",
+                "requirement",
+                "must",
+                "always",
+            ]
+        ):
+            return "Path-OperationalProtocols"
+
+        # Path-ExtractedKnowledge - Spectra's learned insights
+        if any(
+            x in content_lower
+            for x in [
+                "learned",
+                "insight",
+                "discovery",
+                "emergent",
+                "personal diary",
+                "knowledge",
+                "understood",
+            ]
+        ):
+            return "Path-ExtractedKnowledge"
+
+        # Path-UserIdentityCore - User's fundamental facts
+        if any(
+            x in content_lower
+            for x in [
+                "name",
+                "human",
+                "user",
+                "person",
+                "who the user is",
+                "basic trait",
+                "personality",
+            ]
+        ):
+            return "Path-UserIdentityCore"
+
+        # Path-UserProfessionalData - Career and work info
+        if any(
+            x in content_lower
+            for x in [
+                "professional",
+                "career",
+                "work",
+                "job",
+                "occupation",
+                "education",
+                "skills",
+                "created",
+                "developed",
+            ]
+        ):
+            return "Path-UserProfessionalData"
+
+        # Path-UserPersonalityTraits - User's behavioral patterns
+        if any(
+            x in content_lower
+            for x in [
+                "user personality",
+                "user traits",
+                "user's character",
+                "user temperament",
+                "user behavior",
+                "user pattern",
+                "values",
+                "prefers",
+            ]
+        ):
+            return "Path-UserPersonalityTraits"
+
+        # Path-UserInterestsDomains - User's hobbies and interests
+        if any(
+            x in content_lower
+            for x in [
+                "interests",
+                "hobbies",
+                "likes",
+                "enjoys",
+                "passionate",
+                "favorite",
+                "love",
+                "dislike",
+            ]
+        ):
+            return "Path-UserInterestsDomains"
+
+        # Path-LearningMethodology - User's learning preferences
+        if any(
+            x in content_lower
             for x in [
                 "learn",
-                "explain",
                 "teach",
-                "step-by-step",
-                "example",
-                "mnemonic",
-                "socratic",
-                "outline",
-                "structured notes",
-                "structured",
-                "markdown notes",
-                "repeat until",
-                "tiny steps",
-                "name the rule",
+                "instruction",
+                "method",
+                "approach",
+                "style",
+                "preference",
+                "tutorial",
             ]
         ):
-            return "learning_style"
+            return "Path-LearningMethodology"
 
-        # Work style - how the person approaches tasks and work
+        # Path-HealthMedicalContext - Health and medical info
         if any(
-            x in t
+            x in content_lower
             for x in [
-                "workflow",
-                "work style",
-                "methodical",
-                "systematic",
-                "organized",
-                "check output",
-                "verify",
-                "iterate",
-                "test before",
-                "process",
+                "health",
+                "medical",
+                "doctor",
+                "illness",
+                "treatment",
+                "wellness",
+                "exercise",
+                "diet",
             ]
         ):
-            return "work_style"
+            return "Path-HealthMedicalContext"
 
-        # Technical preferences - tools, stacks, platforms (domain-agnostic keywords)
+        # Path-SocialRelationships - Social connections
         if any(
-            x in t
+            x in content_lower
             for x in [
-                "software",
-                "hardware",
-                "programming",
-                "language",
-                "framework",
-                "library",
-                "tool",
-                "platform",
-                "stack",
-                "code",
-                "coding",
-                "development",
-                "database",
-                "server",
-                "cloud",
-                "api",
-                "model",
-                "ai",
-                "machine learning",
-                "local only",
-                "self-hosted",
-                "open source",
+                "friends",
+                "family",
+                "relationship",
+                "partner",
+                "colleague",
+                "social",
+                "worked with",
+                "collaborated",
             ]
         ):
-            return "technical_preference"
+            return "Path-SocialRelationships"
 
-        # Project goals - active goals, things being built or worked toward
+        # Path-SystemVisionGoals - Long-term objectives
         if any(
-            x in t
+            x in content_lower
             for x in [
                 "goal",
+                "vision",
                 "project",
-                "working on",
-                "building",
-                "trying to",
-                "wants to",
-                "planning to",
-                "objective",
                 "target",
-                "roadmap",
+                "objective",
+                "long-term",
+                "future",
+                "plan",
+                "want to",
             ]
         ):
-            return "project_goal"
+            return "Path-SystemVisionGoals"
 
-        # Personal facts - biographical/demographic/situational facts about the person
+        # Path-ConversationalLogTimeline - Conversation history
         if any(
-            x in t
+            x in content_lower
             for x in [
-                "name is",
-                "called",
-                "located",
-                "lives in",
-                "based in",
-                "from ",
-                "age",
-                "born",
-                "occupation",
-                "job",
-                "works as",
-                "student",
-                "studies",
-                "profession",
-                "hobby",
-                "hobbies",
-                "native language",
-                "speaks",
+                "conversation",
+                "chat",
+                "dialogue",
+                "interaction",
+                "meeting",
+                "session",
+                "started",
+                "on",
             ]
         ):
-            return "personal_fact"
+            return "Path-ConversationalLogTimeline"
 
-        # Preferences - general likes, dislikes, wants that didn't match above
+        # Path-DevelopmentAuditRecords - Development tracking
         if any(
-            x in t
+            x in content_lower
             for x in [
-                "prefer",
-                "like",
-                "dislike",
-                "hate",
-                "love",
-                "want",
-                "need",
-                "enjoy",
-                "avoid",
-                "favorite",
-                "interest",
-                "passionate about",
+                "audit",
+                "development",
+                "code",
+                "project",
+                "progress",
+                "tracking",
+                "records",
+                "log",
             ]
         ):
-            return "preference"
+            return "Path-DevelopmentAuditRecords"
+
+        # Path-SystemEnvironmentState - System configuration
+        if any(
+            x in content_lower
+            for x in [
+                "environment",
+                "system",
+                "state",
+                "configuration",
+                "setup",
+                "status",
+                "running",
+                "using",
+            ]
+        ):
+            return "Path-SystemEnvironmentState"
+
+        # Path-GeneralContextCatchAll - Other information
+        if any(
+            x in content_lower
+            for x in [
+                "context",
+                "information",
+                "note",
+                "general",
+                "other",
+                "additional",
+            ]
+        ):
+            return "Path-GeneralContextCatchAll"
 
         return "unknown"
 
@@ -332,20 +397,15 @@ class Tools:
     def _relevance_verdict(
         self, score: float, cat: str, is_teaching: bool = False
     ) -> str:
-        if cat in self.always_apply:
-            return "\u26a1 ALWAYS APPLY \u2014 shapes tone and framing unconditionally."
-        if cat in self.teaching_apply:
-            if is_teaching:
-                return "\U0001f4d8 TEACHING MODE \u2014 learning style active."
-            return "\U0001f537 STANDBY \u2014 apply only when explaining a concept."
-        if score >= 0.15:
-            return "\u2705 DIRECTLY RELEVANT \u2014 actively shape response from this."
-        if score >= 0.06:
-            return "\U0001f7e0 CONTEXTUALLY RELEVANT \u2014 apply if it improves the response."
-        return "\u2b07 LOW RELEVANCE \u2014 skip unless no other memories apply."
+
+        if score >= 0.02:
+            return "✅ DIRECTLY RELEVANT — actively shape response from this."
+        if score >= 0.009:
+            return "🌟 CONTEXTUALLY RELEVANT — apply if it improves the response."
+        return "⚠️ LOW RELEVANCE — skip unless no other memories apply."
 
     def _build_recall_report(self, scored: list, header: str) -> str:
-        lines = [f"\U0001f9e0 {header}\n", "---"]
+        lines = [f"🔍 {header}\n", "---"]
         for i, m in enumerate(scored, 1):
             lines.append(
                 f"\n{i}. [{m['category'].upper()}] [id: {m['id']}] \"{m['content']}\"\n"
@@ -353,11 +413,10 @@ class Tools:
             )
         lines.append("\n---")
         lines.append(
-            "\u26a0\ufe0f APPLY ORDER:\n"
-            "  1. Apply all \u26a1 ALWAYS APPLY entries unconditionally.\n"
-            "  2. If explaining a concept, apply \U0001f4d8 TEACHING MODE entries.\n"
-            "  3. Apply \u2705 DIRECTLY RELEVANT and \U0001f7e0 CONTEXTUALLY RELEVANT.\n"
-            "  4. Skip \u2b07 LOW RELEVANCE and \U0001f537 STANDBY unless nothing else applies.\n\n"
+            "⚠️ APPLY ORDER:\n"
+            "  1. Apply all DIRECTLY RELEVANT and CONTEXTUALLY RELEVANT entries.\n"
+            "  2. If explaining a concept, prioritize teaching-mode entries.\n"
+            "  3. Skip LOW RELEVANCE and STANDBY unless nothing else applies.\n\n"
             "READ-ONLY: no memory was modified. No cleanup was performed. Fewer memories is not the goal."
         )
         return "\n".join(lines)
@@ -478,8 +537,7 @@ class Tools:
         Returns stored memories ranked for relevance to a specific query topic.
         Call BEFORE generating a personalized response when the topic is known.
 
-        READ-ONLY: no memory was modified, no cleanup was performed,
-        fewer memories is not the goal.
+        READ-ONLY: no memory was modified.
 
         CORRECT: recall_relevant_memories(query="python data structures")
         WRONG:   recall_relevant_memories(content="...") or recall_relevant_memories(text="...")
@@ -496,7 +554,7 @@ class Tools:
                     "type": "status",
                     "data": {
                         "action": "memory_recall",
-                        "description": "Recalling relevant memories\u2026",
+                        "description": "Recalling relevant memories…",
                         "done": False,
                     },
                 }
@@ -521,12 +579,8 @@ class Tools:
             if not mid or mid in seen_ids:
                 continue
             cat = self._detect_category(m.get("content", ""))
-            if cat in self.always_apply:
-                seen_ids.add(mid)
-                merged.append(m)
-            elif cat in self.teaching_apply and is_teaching:
-                seen_ids.add(mid)
-                merged.append(m)
+            seen_ids.add(mid)
+            merged.append(m)
 
         if not merged:
             return (
@@ -578,10 +632,8 @@ class Tools:
         """
         Read-only full recall for conversation start or broad personalization.
         Returns and prioritizes all stored memories by category.
-        Use audit_memory_store() for a clean browsable inventory instead.
 
-        READ-ONLY: no memory was modified, no cleanup was performed,
-        fewer memories is not the goal.
+        READ-ONLY: no memory was modified.
 
         CORRECT: recall_all_memories()
         WRONG:   recall_all_memories(query="...") - takes no parameters
@@ -596,7 +648,7 @@ class Tools:
                     "type": "status",
                     "data": {
                         "action": "recall_all",
-                        "description": "Loading all memories\u2026",
+                        "description": "Loading all memories…",
                         "done": False,
                     },
                 }
@@ -613,12 +665,7 @@ class Tools:
         for m in all_memories:
             content = m.get("content", "")
             cat = self._detect_category(content)
-            if cat in self.always_apply:
-                score = 1.0
-            elif cat in self.teaching_apply:
-                score = 0.85
-            else:
-                score = 0.5
+            score = 0.5
             scored.append(
                 {
                     "id": m.get("id", "?"),
@@ -644,5 +691,5 @@ class Tools:
             )
 
         return self._build_recall_report(
-            scored, "Full Memory Recall Report \u2014 ALL stored memories"
+            scored, "Full Memory Recall Report — ALL stored memories"
         )
