@@ -1,8 +1,8 @@
 """
 title: Memory Audit Tool
 author: Danny, Spectra
-version: 3.2.4
-description: Read-only memory inventory and structural quality analysis tool. Updated for Open Web UI v0.9.
+version: 3.3.0
+description: Read-only memory inventory and structural quality analysis tool. Updated for Open Web UI v0.9. Adds containment-based fragment-duplicate detection.
 """
 
 import re
@@ -83,6 +83,24 @@ class Tools:
             ge=0,
             le=20,
             description="Maximum number of related IDs recorded per memory entry.",
+        )
+        fragment_containment_threshold: float = Field(
+            default=0.9,
+            ge=0.0,
+            le=1.0,
+            description=(
+                "Containment score (shared tokens / smaller memory's meaningful tokens) "
+                "above which a smaller memory is flagged as a fragment of a larger one."
+            ),
+        )
+        min_shared_tokens_for_fragment: int = Field(
+            default=2,
+            ge=1,
+            le=20,
+            description=(
+                "Minimum shared meaningful tokens required to flag a memory as a "
+                "fragment. Prevents single common-word false positives."
+            ),
         )
         enable_redundancy_clusters: bool = Field(
             default=True,
@@ -187,6 +205,30 @@ class Tools:
         if not sa or not sb:
             return 0.0
         return len(sa & sb) / len(sa | sb)
+
+    def _shared_token_count(self, a: list, b: list) -> int:
+        return len(set(a) & set(b))
+
+    def _containment_score(self, a: list, b: list) -> float:
+        """
+        Fraction of the smaller token set contained in the larger one.
+
+        Jaccard penalizes fragments: their shared tokens live inside a much
+        larger parent, so the union dominates the denominator and the score
+        collapses (e.g. a 1-token fragment of a 3-token parent scores 0.25).
+        Containment does the opposite - it asks 'is the smaller memory almost
+        entirely inside the larger one?', which is exactly the fragment
+        signal Jaccard misses. A 1-token fragment of a 3-token parent scores
+        1.0 here.
+        """
+        sa, sb = set(a), set(b)
+        if not sa or not sb:
+            return 0.0
+        if len(sa) <= len(sb):
+            smaller, larger = sa, sb
+        else:
+            smaller, larger = sb, sa
+        return len(smaller & larger) / len(smaller)
 
     # -- normalization ---------------------------------------------------------
 
@@ -548,13 +590,39 @@ class Tools:
     def _find_duplicate_candidates(
         self, memory: dict, all_memories: list, threshold: float, top_k: int
     ):
+        """
+        Return candidate duplicates for `memory`, sorted by descending score.
+
+        Two complementary signals are combined:
+
+        1. Jaccard overlap (existing behaviour) - catches two memories that are
+           broadly similar in length and content.
+        2. Containment / fragment signal - catches a smaller memory whose
+           meaningful tokens are almost entirely contained in a larger one.
+           This is the case Jaccard misses (see `_containment_score`).
+
+        Each result is a tuple: (other_memory, score, is_fragment).
+        """
+        cont_threshold = self.user_valves.fragment_containment_threshold
+        min_shared = self.user_valves.min_shared_tokens_for_fragment
         scored = []
         for other in all_memories:
             if other["id"] == memory["id"]:
                 continue
-            score = self._jaccard_score(memory["tokens"], other["tokens"])
-            if score >= threshold:
-                scored.append((other, score))
+            jaccard = self._jaccard_score(memory["tokens"], other["tokens"])
+            shared = self._shared_token_count(memory["tokens"], other["tokens"])
+            containment = self._containment_score(memory["tokens"], other["tokens"])
+
+            is_fragment = (
+                shared >= min_shared
+                and containment >= cont_threshold
+                and len(memory["tokens"]) >= 2
+                and len(other["tokens"]) >= 2
+            )
+
+            if jaccard >= threshold or is_fragment:
+                score = max(jaccard, containment if is_fragment else 0.0)
+                scored.append((other, score, is_fragment))
         scored.sort(key=lambda x: -x[1])
         return scored[:top_k]
 
@@ -630,8 +698,18 @@ class Tools:
         )
         if dups:
             issues.append("duplicate")
-            dup_ids = [m["id"] for m, _ in dups]
-            notes.append(f"Overlaps with {len(dups)} other memory/memories: {dup_ids}.")
+            fragment_ids = [m["id"] for m, _, frag in dups if frag]
+            overlap_ids = [m["id"] for m, _, frag in dups if not frag]
+            if fragment_ids:
+                notes.append(
+                    f"Appears to be a fragment contained in {len(fragment_ids)} "
+                    f"larger memory/memories: {fragment_ids}."
+                )
+            if overlap_ids:
+                notes.append(
+                    "Overlaps with "
+                    f"{len(overlap_ids)} other memory/memories: {overlap_ids}."
+                )
 
         if self._detect_underspecified(memory):
             issues.append("underspecified")
@@ -666,7 +744,7 @@ class Tools:
             "suggested_next_step": self._suggest_next_step(action),
             "confidence": confidence,
             "related_ids": [
-                m["id"] for m, _ in dups[: self.user_valves.max_related_ids_per_entry]
+                m["id"] for m, _, _ in dups[: self.user_valves.max_related_ids_per_entry]
             ],
         }
 
