@@ -45,7 +45,7 @@ class Tools:
             description="Jaccard threshold for redundancy cluster grouping in inventory view.",
         )
         audit_duplicate_threshold: float = Field(
-            default=0.45,
+            default=0.15,
             ge=0.0,
             le=1.0,
             description="Jaccard threshold above which two memories are flagged as likely duplicates.",
@@ -616,8 +616,10 @@ class Tools:
             is_fragment = (
                 shared >= min_shared
                 and containment >= cont_threshold
-                and len(memory["tokens"]) >= 2
-                and len(other["tokens"]) >= 2
+                # Only when the queried memory is the smaller (or equal) set.
+                # containment_score is symmetric, so without this the parent
+                # would be flagged as a fragment of its own fragments.
+                and len(memory["tokens"]) <= len(other["tokens"])
             )
 
             if jaccard >= threshold or is_fragment:
